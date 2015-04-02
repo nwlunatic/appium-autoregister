@@ -48,12 +48,12 @@ def get_free_port():
     return port
 
 
-def register_appium_node(filename, port):
+def register_appium_node(filename, port, device):
     appium_executable = os.environ.get("APPIUM_EXECUTABLE", None)
     if appium_executable is None:
         exit('set $APPIUM_EXECUTABLE to path of appium installation')
 
-    command = [appium_executable, "--nodeconfig", filename, "--port", str(port)]
+    command = [appium_executable, "--nodeconfig", filename, "--port", str(port), "--udid", device]
     logging.info("running command %s" % " ".join(command))
 
     return Popen(command)
@@ -68,7 +68,7 @@ class AppiumNode(object):
 
     def start(self):
         logging.info("starting appium node for %s" % self.device)
-        self.process = register_appium_node(self.config_file, self.port)
+        self.process = register_appium_node(self.config_file, self.port, self.device.name)
         logging.info("process started with pid %s" % self.process.pid)
 
     def stop(self):
