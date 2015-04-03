@@ -53,7 +53,11 @@ def register_appium_node(filename, port, device):
     if appium_executable is None:
         exit('set $APPIUM_EXECUTABLE to path of appium installation')
 
-    command = [appium_executable, "--nodeconfig", filename, "--port", str(port), "--udid", device]
+    command = [appium_executable,
+               "--nodeconfig", filename,
+               "--port", str(port),
+               "--bootstrap-port", str(get_free_port()),
+               "--udid", device]
     logging.info("running command %s" % " ".join(command))
 
     return Popen(command)
