@@ -13,7 +13,7 @@ from android import android_devices
 
 nodes = list()
 
-config = Template("""
+config_template = Template("""
 {
     "capabilities": [{
         "browserName": "$browserName",
@@ -48,22 +48,11 @@ def get_free_port():
     return port
 
 
-def register_appium_node(filename, port, device):
+class AppiumNode(object):
     appium_executable = os.environ.get("APPIUM_EXECUTABLE", None)
     if appium_executable is None:
-        exit('set $APPIUM_EXECUTABLE to path of appium installation')
+        exit('set $APPIUM_EXECUTABLE to path of appium executable')
 
-    command = [appium_executable,
-               "--nodeconfig", filename,
-               "--port", str(port),
-               "--bootstrap-port", str(get_free_port()),
-               "--udid", device]
-    logging.info("running command %s" % " ".join(command))
-
-    return Popen(command)
-
-
-class AppiumNode(object):
     def __init__(self, port, device, config_file):
         self.port = port
         self.device = device
@@ -71,9 +60,20 @@ class AppiumNode(object):
         self.process = None
 
     def start(self):
+        if self.process is not None:
+            return self.process
+
         logging.info("starting appium node for %s" % self.device)
-        self.process = register_appium_node(self.config_file, self.port, self.device.name)
+        command = [
+            self.appium_executable,
+            "--nodeconfig", self.config_file,
+            "--port", str(self.port),
+            "--bootstrap-port", str(get_free_port()),
+            "--udid", self.device.name]
+        logging.info("running command %s" % " ".join(command))
+        self.process = Popen(command)
         logging.info("process started with pid %s" % self.process.pid)
+        return self.process
 
     def stop(self):
         self.process.kill()
@@ -94,9 +94,9 @@ def register(grid_host, grid_port, appium_host):
             del already_handled_devices[device.name]
             continue
 
+        config_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
         port = get_free_port()
         config = generate_config(device, port, grid_host, grid_port, appium_host)
-        config_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
         config_file.write(config)
         config_file.flush()
         node = AppiumNode(port, device, config_file.name)
@@ -109,7 +109,7 @@ def register(grid_host, grid_port, appium_host):
 
 
 def generate_config(device, appium_port, grid_host, grid_port, appium_host):
-    return config.substitute({
+    return config_template.substitute({
         "browserName": device.model,
         "version": device.version,
         "platform": device.platform,
@@ -122,14 +122,6 @@ def generate_config(device, appium_port, grid_host, grid_port, appium_host):
 
 
 def main(grid_host, grid_port, appium_host):
-    android_home = os.environ.get("ANDROID_HOME", None)
-    if android_home is None:
-        exit("set $ANDROID_HOME to path of your android sdk root")
-
-    appium_executable = os.environ.get("APPIUM_EXECUTABLE", None)
-    if appium_executable is None:
-        exit('set $APPIUM_EXECUTABLE to path of appium executable')
-
     logging.info("start registring devices...")
     try:
         while True:
