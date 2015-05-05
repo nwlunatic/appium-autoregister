@@ -4,6 +4,7 @@ import logging
 import tempfile
 import os
 import socket
+import signal
 from subprocess import Popen, PIPE, STDOUT
 from string import Template
 
@@ -75,6 +76,10 @@ class AppiumNode(object):
                 self.log.info("%s" % line.decode().strip("\n"))
 
 
+class StopAutoregister(Exception):
+    pass
+
+
 class Autoregister(object):
     nodes = list()
 
@@ -103,40 +108,51 @@ class Autoregister(object):
     }
     """)
 
-    def __init__(self):
+    def __init__(self, grid_host, grid_port, appium_host):
+        self.grid_host = grid_host
+        self.grid_port = grid_port
+        self.appium_host = appium_host
+        signal.signal(signal.SIGTERM, self.stop_signal)
+
+    @staticmethod
+    def stop_signal(signum, frame):
+        raise StopAutoregister()
+
+    def run(self, ):
         log.info("start registring devices...")
+        try:
+            while True:
+                already_handled_devices = {node.device.name: node for node in self.nodes}
+                for device in android_devices():
+                    if device.name in already_handled_devices.keys():
+                        del already_handled_devices[device.name]
+                        continue
 
-    def register(self, grid_host, grid_port, appium_host):
+                    config_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+                    port = get_free_port()
+                    config = self.generate_config(device, port)
+                    config_file.write(config)
+                    config_file.flush()
+                    node = AppiumNode(port, device, config_file.name)
+                    node.start()
+                    self.nodes.append(node)
 
-        already_handled_devices = {node.device.name: node for node in self.nodes}
-        for device in android_devices():
-            if device.name in already_handled_devices.keys():
-                del already_handled_devices[device.name]
-                continue
+                for node in already_handled_devices.values():
+                    node.stop()
+                    self.nodes.remove(node)
+        except (StopAutoregister, KeyboardInterrupt, SystemExit):
+            self.stop()
 
-            config_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
-            port = get_free_port()
-            config = self.generate_config(device, port, grid_host, grid_port, appium_host)
-            config_file.write(config)
-            config_file.flush()
-            node = AppiumNode(port, device, config_file.name)
-            node.start()
-            self.nodes.append(node)
-
-        for node in already_handled_devices.values():
-            node.stop()
-            self.nodes.remove(node)
-
-    def generate_config(self, device, appium_port, grid_host, grid_port, appium_host):
+    def generate_config(self, device, appium_port):
         return self.config_template.substitute({
             "browserName": device.model,
             "version": device.version,
             "platform": device.platform,
             "device": device.name,
-            "appium_host": appium_host,
+            "appium_host": self.appium_host,
             "appium_port": appium_port,
-            "grid_host": grid_host,
-            "grid_port": grid_port,
+            "grid_host": self.grid_host,
+            "grid_port": self.grid_port,
         })
 
     def stop(self):
@@ -146,12 +162,8 @@ class Autoregister(object):
 
 
 def main(grid_host, grid_port, appium_host):
-    autoregister = Autoregister()
-    try:
-        while True:
-            autoregister.register(grid_host, grid_port, appium_host)
-    except KeyboardInterrupt:
-        autoregister.stop()
+    autoregister = Autoregister(grid_host, grid_port, appium_host)
+    autoregister.run()
 
 
 if __name__ == "__main__":
