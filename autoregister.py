@@ -170,7 +170,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run appium autoregister')
     parser.add_argument('--grid-host', type=str, dest='grid_host', default="localhost",
                         help='Selenium grid host register to. Default localhost.')
-    parser.add_argument('--grid-post', type=int, dest='grid_port', default=4444,
+    parser.add_argument('--grid-port', type=int, dest='grid_port', default=4444,
                         help='Selenium grid port register to. Default 4444.')
     parser.add_argument('--appium-host', type=str, dest='appium_host', default="localhost",
                         help='This machine host, to be discovered from grid. Default localhost.')
