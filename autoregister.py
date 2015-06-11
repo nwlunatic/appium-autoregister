@@ -60,7 +60,11 @@ class AppiumNode(object):
         return self.process
 
     def stop(self):
-        self.process.kill()
+        try:
+            self.process.kill()
+        except ProcessLookupError:
+            # process killed from outside
+            pass
         self.process_reader.join()
         try:
             os.remove(self.config_file)
