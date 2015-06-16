@@ -57,9 +57,22 @@ def emulator_command(args, wait_end=True):
 
 
 @asyncio.coroutine
+def android_command(args, wait_end=True):
+    android_home = os.environ.get("ANDROID_HOME", None)
+    if android_home is not None:
+        android = os.path.join(android_home, 'tools', 'android')
+    else:
+        # if we don't have ANDROID_HOME set, let's just hope adb is in PATH
+        android = 'android'
+    args = [android] + args
+    p = yield from run_command(args, wait_end)
+    return p
+
+
+@asyncio.coroutine
 def avd_list():
-    args = ['-list-avds']
-    p = yield from emulator_command(args)
+    args = ['list', 'avds', '-c']
+    p = yield from android_command(args)
     stdout, stderr = yield from p.communicate()
     return stdout.decode().split()
 
@@ -128,15 +141,3 @@ class Emulator(object):
                 log.exception(e)
             yield from self.process.wait()
         yield from self._delete_disks()
-
-
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    e1 = Emulator(avd_list[0])
-    loop.run_until_complete(e1.start())
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        loop.run_until_complete(e1.delete())
-    finally:
-        loop.close()
