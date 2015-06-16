@@ -11,7 +11,7 @@ from configparser import ConfigParser
 from aiohttp import web
 
 from android.adb import adb_command, until_adb_output
-from android.emulator import Emulator
+from android.emulator import Emulator, avd_list
 from android import find_device_by_uuid
 
 
@@ -89,9 +89,10 @@ def error_reporter_factory(app, handler):
                 "status": 13,
                 "value": value
             }
+            encoding = request.charset or "utf-8"
             result = web.Response(
                 status=500,
-                body=json.dumps(response).encode(request.charset)
+                body=json.dumps(response).encode(encoding)
             )
         return result
     return error_reporter
@@ -150,7 +151,14 @@ def create_session(request: web.Request):
     return result
 
 
+@asyncio.coroutine
+def platforms(request: web.Request):
+    avds = yield from avd_list()
+    return web.Response(body=json.dumps(avds).encode())
+
+
 app = web.Application(middlewares=[error_reporter_factory])
 app.router.add_route('POST', '/wd/hub/session', create_session)
 app.router.add_route('DELETE', '/wd/hub/session/{session_id}', delete_session)
+app.router.add_route('GET', '/platforms', platforms)
 app.router.add_route('*', '/{path:.*}', transparent)

@@ -43,7 +43,25 @@ def mksdcard(name, size):
     return name if not p.returncode else None
 
 
-avd_list = ["android-21-x86"]
+@asyncio.coroutine
+def emulator_command(args, wait_end=True):
+    android_home = os.environ.get("ANDROID_HOME", None)
+    if android_home is not None:
+        emulator = os.path.join(android_home, 'tools', 'emulator')
+    else:
+        # if we don't have ANDROID_HOME set, let's just hope adb is in PATH
+        emulator = 'emulator'
+    args = [emulator] + args
+    p = yield from run_command(args, wait_end)
+    return p
+
+
+@asyncio.coroutine
+def avd_list():
+    args = ['-list-avds']
+    p = yield from emulator_command(args)
+    stdout, stderr = yield from p.communicate()
+    return stdout.decode().split()
 
 
 class Emulator(object):
@@ -75,20 +93,10 @@ class Emulator(object):
         assert self.data is not None
         assert self.sdcard is not None
 
-        android_home = os.environ.get("ANDROID_HOME", None)
-        if android_home is not None:
-            emulator = os.path.join(android_home, 'tools', 'emulator')
-        else:
-            # if we don't have ANDROID_HOME set, let's just hope adb is in PATH
-            emulator = 'emulator'
-        args = [emulator, '-avd', self.avd, '-prop', 'emu.uuid=%s' % self.uuid,
+        args = ['-avd', self.avd, '-prop', 'emu.uuid=%s' % self.uuid,
                 '-data', self.data, '-sdcard', self.sdcard]
-        p = yield from asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            env=os.environ.copy())
-        setattr(p, 'args', args)
-        return p
+        emulator_command(args)
+        return (yield from emulator_command(args, wait_end=False))
 
     @asyncio.coroutine
     def _create_disks(self):
