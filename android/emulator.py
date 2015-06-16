@@ -22,7 +22,7 @@ def delete_file(filename):
 
 @asyncio.coroutine
 def create_img(name, size):
-    qemu_img = "/usr/local/bin/qemu-img"
+    qemu_img = "qemu-img"
     args = [qemu_img, 'create', '-f', 'qcow2',
             '-o', 'preallocation=metadata',
             name, size]
