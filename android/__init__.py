@@ -1,5 +1,6 @@
 # coding: utf-8
 
+import asyncio
 from os import environ, path
 from subprocess import Popen, PIPE
 import logging
@@ -48,9 +49,10 @@ class Device(object):
         self.adb = Adb(self.name)
         self.version = self.adb.getprop("ro.build.version.release")
         self.model = self.adb.getprop("ro.product.model")
+        self.uuid = self.adb.getprop("emu.uuid")
 
     def __str__(self):
-        return "<%s %s %s>" % (self.name, self.platform, self.version)
+        return "<%s %s %s emu.uuid=%s>" % (self.name, self.platform, self.version, self.uuid)
 
 
 def android_devices():
@@ -64,3 +66,11 @@ def android_devices():
             device_name, state = None, None
         if state == "device":
             yield Device(device_name, "ANDROID")
+
+
+def find_device_by_uuid(uuid):
+    for device in android_devices():
+        if device.uuid == uuid:
+            return device
+
+    return None
