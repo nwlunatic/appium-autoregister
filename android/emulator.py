@@ -83,7 +83,8 @@ class Emulator(object):
     process = None
 
     def __init__(self, avd):
-        if avd not in avd_list:
+        avds = yield from avd_list()
+        if avd not in avds:
             raise Exception("No such avd: %s\n" % avd)
         self.avd = avd
         self.uuid = str(uuid4())
