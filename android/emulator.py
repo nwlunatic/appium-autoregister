@@ -83,9 +83,6 @@ class Emulator(object):
     process = None
 
     def __init__(self, avd):
-        avds = yield from avd_list()
-        if avd not in avds:
-            raise Exception("No such avd: %s\n" % avd)
         self.avd = avd
         self.uuid = str(uuid4())
         self.name = "%s-%s" % (avd, self.uuid)
@@ -127,6 +124,9 @@ class Emulator(object):
 
     @asyncio.coroutine
     def start(self):
+        avds = yield from avd_list()
+        if self.avd not in avds:
+            raise Exception("No such avd: %s\n" % self.avd)
         log.debug("starting %s" % self)
         yield from self._create_disks()
         self.process = yield from self._start_emulator_process()
