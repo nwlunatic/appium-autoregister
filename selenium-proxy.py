@@ -2,11 +2,11 @@ import asyncio
 import logging
 
 formatter = '%(asctime)-25s - %(levelname)-8s - %(message)s'
-logging.basicConfig(format=formatter, level=logging.DEBUG)
+logging.basicConfig(format=formatter, level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
-from selenium_proxy.app import app
+from selenium_proxy.app import app, Sessions
 
 
 @asyncio.coroutine
@@ -23,6 +23,8 @@ handler = app.make_handler()
 loop = asyncio.get_event_loop()
 server_coroutine = loop.create_server(handler, '0.0.0.0', 8080)
 server = loop.run_until_complete(server_coroutine)
+asyncio.async(Sessions.watcher(), loop=loop)
+
 
 log.info('Serving on %s' % str(server.sockets[0].getsockname()))
 try:
