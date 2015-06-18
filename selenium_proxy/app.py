@@ -105,9 +105,7 @@ def create_session(request: web.Request):
     try:
         yield from emulator.start()
         appium_node = AppiumNode(get_free_port(), emulator.device)
-        appium_node.start()
-        # TODO: we need to wait process to occupy port. Or (probably) pinging can occupy it port
-        yield from asyncio.sleep(0.5)
+        yield from appium_node.start_coro()
         session.endpoint = Endpoint("localhost", appium_node.port, [
             appium_node, emulator
         ])
