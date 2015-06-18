@@ -1,6 +1,5 @@
 # coding: utf-8
 
-import asyncio
 from os import environ, path
 from subprocess import Popen, PIPE
 import logging

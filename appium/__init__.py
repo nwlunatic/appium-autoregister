@@ -1,5 +1,6 @@
 # coding: utf-8
 
+import asyncio
 import os
 import logging
 from subprocess import Popen, PIPE, STDOUT
@@ -19,7 +20,7 @@ class AppiumNode(object):
     if appium_executable is None:
         exit('set $APPIUM_EXECUTABLE to path of appium executable')
 
-    def __init__(self, port, device, config_file):
+    def __init__(self, port, device, config_file=None):
         self.port = port
         self.device = device
         self.config_file = config_file
@@ -32,10 +33,12 @@ class AppiumNode(object):
         log.info("starting appium node for %s" % self.device)
         command = [
             self.appium_executable,
-            "--nodeconfig", self.config_file,
             "--port", str(self.port),
             "--bootstrap-port", str(get_free_port()),
             "--udid", self.device.name]
+        if self.config_file:
+            command += ["--nodeconfig", self.config_file]
+
         log.info("running command %s" % " ".join(command))
         self.process = Popen(command, stderr=STDOUT, stdout=PIPE)
         self.process_reader = Thread(target=self._log_process_stdout)
@@ -45,18 +48,16 @@ class AppiumNode(object):
         return self.process
 
     def stop(self):
-        try:
+        if self.process and not self.process.poll():
             self.process.kill()
-        except ProcessLookupError:
-            # process killed from outside
-            pass
         self.process_reader.join()
-        try:
+        if self.config_file:
             os.remove(self.config_file)
-        except FileNotFoundError:
-            # file already deleted
-            pass
         log.info("appium node for %s stopped" % self.device)
+
+    @asyncio.coroutine
+    def delete(self):
+        self.stop()
 
     def _log_process_stdout(self):
         while self.process.poll() is None:

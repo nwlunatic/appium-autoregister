@@ -6,9 +6,17 @@ import logging
 from uuid import uuid4
 
 from utils import run_command
+from config import config
+
+from android import find_device_by_uuid
+from android.adb import adb_command, until_adb_output
 
 
 log = logging.getLogger(__name__)
+
+TIMEOUT = config.getint('settings', 'timeout')
+EMULATOR_ARGS = config.get("emulator", "args", fallback=[]).split(" ")
+log.info("emulator args %s" % str(EMULATOR_ARGS))
 
 
 @asyncio.coroutine
@@ -77,10 +85,25 @@ def avd_list():
     return stdout.decode().split()
 
 
+@asyncio.coroutine
+def wait_for_device_ready(device_name):
+    log.info("Waiting for %s become ready" % device_name)
+    yield from asyncio.wait_for(until_adb_output(
+        device_name, "shell getprop dev.bootcomplete", b"1"), TIMEOUT)
+    yield from asyncio.wait_for(until_adb_output(
+        device_name, "shell getprop sys.boot_completed", b"1"), TIMEOUT)
+    yield from asyncio.wait_for(until_adb_output(
+        device_name, "shell getprop init.svc.bootanim", b"stopped"), TIMEOUT)
+    yield from asyncio.wait_for(until_adb_output(
+        device_name, "shell getprop service.bootanim.exit", b"1"), TIMEOUT)
+    log.info("%s is ready" % device_name)
+
+
 class Emulator(object):
     data = None
     sdcard = None
     process = None
+    device = None
 
     def __init__(self, avd):
         self.avd = avd
@@ -105,8 +128,7 @@ class Emulator(object):
         assert self.sdcard is not None
 
         args = ['-avd', self.avd, '-prop', 'emu.uuid=%s' % self.uuid,
-                '-data', self.data, '-sdcard', self.sdcard]
-        emulator_command(args)
+                '-data', self.data, '-sdcard', self.sdcard] + EMULATOR_ARGS
         return (yield from emulator_command(args, wait_end=False))
 
     @asyncio.coroutine
@@ -127,14 +149,20 @@ class Emulator(object):
         avds = yield from avd_list()
         if self.avd not in avds:
             raise Exception("No such avd: %s\n" % self.avd)
-        log.debug("starting %s" % self)
+        log.info("starting %s" % self)
         yield from self._create_disks()
         self.process = yield from self._start_emulator_process()
-        log.debug("%s started" % self)
+        log.info("%s started" % self)
+        self.device = find_device_by_uuid(self.uuid)
+        while self.device is None:
+            self.device = find_device_by_uuid(self.uuid)
+            yield from asyncio.sleep(0)
+        log.info("device %s found" % self.device)
+        yield from wait_for_device_ready(self.device.name)
 
     @asyncio.coroutine
     def delete(self):
-        log.debug("deleting %s" % self)
+        log.info("deleting %s" % self)
         if self.process:
             try:
                 self.process.kill()
