@@ -3,7 +3,10 @@ import asyncio
 import aiohttp
 import logging
 
-from utils import ping
+from android.emulator import Emulator
+from appium import AppiumNode
+
+from utils import ping, get_free_port
 
 
 log = logging.getLogger(__name__)
@@ -15,15 +18,20 @@ class Endpoint(object):
     resources = None
     ready = False
 
-    def __init__(self, ip, port, resources: list):
-        self.ip = ip
-        self.port = port
-        self.resources = resources
+    def __init__(self):
+        self.resources = []
 
     def __repr__(self):
         return "<%s address=%s ready=%s>" % (
             self.__class__.__name__, self.address, self.ready
         )
+
+    def to_json(self):
+        return self.__dict__
+
+    @asyncio.coroutine
+    def start(self, desired_capabilities):
+        raise NotImplementedError
 
     @asyncio.coroutine
     def delete(self):
@@ -61,6 +69,7 @@ class Endpoint(object):
             response = yield from aiohttp.request(
                 'GET', 'http://%s/wd/hub/status' % self.address)
             status = response.status
+            yield from response.release()
             retry += 1
             yield from asyncio.sleep(0)
         log.info("got selenium status for %s" % self)
@@ -72,3 +81,19 @@ class Endpoint(object):
         yield from self._wait_selenium_status()
         self.ready = True
         log.info("%s ready" % self)
+
+
+class AndroidEndpoint(Endpoint):
+    @asyncio.coroutine
+    def start(self, desired_capabilities):
+        self.ip = "localhost"
+        avd_name = desired_capabilities.get("avdName")
+        emulator = Emulator(avd_name)
+        self.resources.append(emulator)
+        yield from emulator.start()
+        self.port = get_free_port()
+        appium_node = AppiumNode(self.port, emulator.device)
+        self.resources.append(appium_node)
+        yield from appium_node.start_coro()
+        yield from self.wait_ready()
+        return self

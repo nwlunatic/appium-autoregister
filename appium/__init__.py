@@ -3,6 +3,7 @@
 import asyncio
 import os
 import logging
+import copy
 from subprocess import Popen, PIPE, STDOUT
 from threading import Thread
 
@@ -25,6 +26,12 @@ class AppiumNode(object):
         self.device = device
         self.config_file = config_file
         self.log = logging.getLogger(self.device.name)
+
+    def to_json(self):
+        _json = copy.copy(self.__dict__)
+        del _json['process']
+        del _json['log']
+        return _json
 
     @property
     def _command(self):
