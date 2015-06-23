@@ -9,23 +9,63 @@ import logging
 
 from aiohttp import web, hdrs
 
-from config import config
-
-from android.emulator import Emulator, avd_list
-from appium import AppiumNode
-
-from selenium_proxy.session import Sessions, Session
-from selenium_proxy.endpoint import Endpoint
-
-from utils import get_free_port
+from android.emulator import avd_list
+from selenium_proxy.session import Sessions, Session, SessionStatus
+from selenium_proxy.endpoint import AndroidEndpoint
 
 
 log = logging.getLogger(__name__)
 
 
-HOST = config.get('settings', 'host')
+class JSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        try:
+            return super(JSONEncoder, self).default(o)
+        except TypeError:
+            return o.to_json()
 
-log.info("Proxying requests to %s" % HOST)
+
+def in_session(handler):
+    @asyncio.coroutine
+    def request_wrapper(request: web.Request):
+        @asyncio.coroutine
+        def connection_dropped():
+            socket = request.transport.get_extra_info('socket')
+            while socket._closed != True:
+                yield from asyncio.sleep(0)
+            request.session.close(SessionStatus.connection_dropped)
+
+        drop_handler = asyncio.async(connection_dropped())
+        req = asyncio.async(handler(request))
+        done, pending = yield from asyncio.wait(
+            [
+                req,
+                asyncio.async(request.session.closed)
+            ],
+            return_when=asyncio.FIRST_COMPLETED)
+        if req.done():
+            drop_handler.cancel()
+            return req.result()
+        else:
+            req.cancel()
+            for task in done:
+               task.result()
+    return request_wrapper
+
+
+@asyncio.coroutine
+def session_factory(app, handler):
+    @asyncio.coroutine
+    def session_extractor(request: web.Request):
+        session_id = request.match_info.get("session_id")
+        if session_id:
+            session = Sessions.find(session_id)
+        else:
+            session = None
+
+        request.session = session
+        return (yield from handler(request))
+    return session_extractor
 
 
 @asyncio.coroutine
@@ -36,12 +76,10 @@ def error_reporter_factory(app, handler):
             result = yield from handler(request)
         except:
             session_id = request.match_info.get("session_id")
-            try:
-                session = Sessions.find(session_id)
-                session.close()
-            except:
-                pass
             ex_type, ex, tb = sys.exc_info()
+            if session_id:
+                session = Sessions.find(session_id)
+                session.close(ex)
             stack_trace = []
             for filename, lno, method, string in reversed(traceback.extract_tb(tb)):
                 stack_trace.append({
@@ -56,7 +94,7 @@ def error_reporter_factory(app, handler):
                 "stackTrace": stack_trace,
             }
             response = {
-                "sessionId": "",
+                "sessionId": session_id,
                 "status": 13,
                 "value": value
             }
@@ -69,13 +107,12 @@ def error_reporter_factory(app, handler):
     return error_reporter
 
 
+@in_session
 @asyncio.coroutine
 def transparent(request: web.Request):
-    session_id = request.match_info.get('session_id')
-    session = Sessions.find(session_id)
     response = yield from aiohttp.request(
         request.method,
-        "%s://%s%s" % (request.scheme, session.endpoint.address, request.path),
+        "%s://%s%s" % (request.scheme, request.session.endpoint.address, request.path),
         headers=request.headers,
         data=(yield from request.read())
     )
@@ -86,45 +123,40 @@ def transparent(request: web.Request):
     )
 
 
+@in_session
 @asyncio.coroutine
 def delete_session(request: web.Request):
-    session_id = request.match_info.get('session_id')
-    session = Sessions.find(session_id)
-    if session:
-        yield from session.close()
+    request.session.close()
     return web.Response(status=200)
+
+
+@in_session
+@asyncio.coroutine
+def start_session(request: web.Request):
+    session = request.session
+    session.endpoint = AndroidEndpoint()
+    yield from session.endpoint.start(session.desired_capabilities)
+    headers = {k: v for k, v in request.headers.items() if k != hdrs.HOST}
+    response = yield from aiohttp.request(
+        request.method,
+        "%s://%s%s" % (request.scheme, session.endpoint.address, request.path),
+        headers=headers,
+        data=(yield from request.read())
+    )
+    if response.status == 200:
+        body = yield from response.json()
+        session.session_id = session.remote_session_id = body.get('sessionId')
+    else:
+        session.close()
+    return response
 
 
 @asyncio.coroutine
 def create_session(request: web.Request):
-    session = Session()
     body = yield from request.json()
     desired_capabilities = body.get("desiredCapabilities")
-    avd_name = desired_capabilities.get("avdName")
-    emulator = Emulator(avd_name)
-    try:
-        yield from emulator.start()
-        appium_node = AppiumNode(get_free_port(), emulator.device)
-        yield from appium_node.start_coro()
-        session.endpoint = Endpoint("localhost", appium_node.port, [
-            appium_node, emulator
-        ])
-        yield from session.endpoint.wait_ready()
-        headers = {k: v for k, v in request.headers.items() if k != hdrs.HOST}
-        response = yield from aiohttp.request(
-            request.method,
-            "%s://%s%s" % (request.scheme, session.endpoint.address, request.path),
-            headers=headers,
-            data=(yield from request.read())
-        )
-        if response.status == 200:
-            body = yield from response.json()
-            session.session_id = session.remote_session_id = body.get('sessionId')
-        else:
-            yield from session.close()
-    except:
-        yield from session.close()
-        raise
+    request.session = Session(desired_capabilities)
+    response = yield from start_session(request)
     return web.Response(
         status=response.status,
         headers=response.headers,
@@ -140,11 +172,13 @@ def platforms(request: web.Request):
 
 @asyncio.coroutine
 def sessions(request: web.Request):
-    session_ids = [session.session_id for session in Sessions.sessions]
-    return web.Response(body=json.dumps(session_ids).encode())
+    return web.Response(body=json.dumps(
+        Sessions.sessions, cls=JSONEncoder
+    ).encode())
 
 
-app = web.Application(middlewares=[error_reporter_factory])
+app = web.Application(middlewares=[error_reporter_factory, session_factory])
+
 app.router.add_route('POST', '/wd/hub/session', create_session)
 app.router.add_route('DELETE', '/wd/hub/session/{session_id}', delete_session)
 app.router.add_route('*', '/wd/hub/session/{session_id}', transparent)

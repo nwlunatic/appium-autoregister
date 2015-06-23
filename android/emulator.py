@@ -3,6 +3,7 @@
 import os
 import asyncio
 import logging
+import copy
 from uuid import uuid4
 
 from utils import run_command
@@ -118,7 +119,9 @@ class Emulator(object):
         self.delete()
 
     def to_json(self):
-        return self.__dict__
+        _json = copy.copy(self.__dict__)
+        del _json['process']
+        return _json
 
     @asyncio.coroutine
     def _start_emulator_process(self):
@@ -163,7 +166,7 @@ class Emulator(object):
     @asyncio.coroutine
     def delete(self):
         log.info("deleting %s" % self)
-        if self.process:
+        if self.process and not self.process.returncode:
             try:
                 self.process.kill()
             except ProcessLookupError as e:

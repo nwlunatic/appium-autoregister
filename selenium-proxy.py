@@ -23,8 +23,6 @@ handler = app.make_handler()
 loop = asyncio.get_event_loop()
 server_coroutine = loop.create_server(handler, '0.0.0.0', 8080)
 server = loop.run_until_complete(server_coroutine)
-asyncio.async(Sessions.watcher(), loop=loop)
-
 
 log.info('Serving on %s' % str(server.sockets[0].getsockname()))
 try:

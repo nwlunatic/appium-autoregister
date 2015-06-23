@@ -3,6 +3,7 @@
 from os import environ, path
 from subprocess import Popen, PIPE
 import logging
+import copy
 
 import sys
 
@@ -52,6 +53,11 @@ class Device(object):
 
     def __str__(self):
         return "<%s %s %s emu.uuid=%s>" % (self.name, self.platform, self.version, self.uuid)
+
+    def to_json(self):
+        _json = copy.copy(self.__dict__)
+        del _json['adb']
+        return _json
 
 
 def android_devices():
