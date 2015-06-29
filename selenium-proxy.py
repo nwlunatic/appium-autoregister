@@ -34,4 +34,7 @@ finally:
     loop.run_until_complete(server.wait_closed())
     loop.run_until_complete(wait_connections_done(handler))
     loop.run_until_complete(app.finish())
+    # pending = asyncio.Task.all_tasks()
+    # log.info(pending)
+    # loop.run_until_complete(asyncio.gather(*pending))
 loop.close()

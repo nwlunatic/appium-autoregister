@@ -49,14 +49,16 @@ def ping(ip, port):
 
 
 @asyncio.coroutine
-def run_command(args, wait_end=True):
+def run_command(args, wait_end=True, env=os.environ.copy()):
+    log.info("running command: %s" % " ".join(args))
     p = yield from asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        env=os.environ.copy())
+        env=env)
     setattr(p, 'args', args)
     if wait_end:
         yield from p.wait()
         if p.returncode:
-            log.warning((yield from p.communicate()))
+            out, err = yield from p.communicate()
+            log.warning(err)
     return p

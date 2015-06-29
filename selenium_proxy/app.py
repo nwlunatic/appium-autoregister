@@ -10,7 +10,8 @@ import logging
 from aiohttp import web, hdrs
 
 from android.emulator import avd_list
-from selenium_proxy.session import Sessions, Session, SessionStatus
+from selenium_proxy.session import \
+    (Sessions, Session, SessionStatus, SessionError)
 from selenium_proxy.endpoint import AndroidEndpoint
 
 
@@ -49,7 +50,7 @@ def in_session(handler):
         else:
             req.cancel()
             for task in done:
-               task.result()
+                task.result()
     return request_wrapper
 
 
@@ -78,8 +79,11 @@ def error_reporter_factory(app, handler):
             session_id = request.match_info.get("session_id")
             ex_type, ex, tb = sys.exc_info()
             if session_id:
-                session = Sessions.find(session_id)
-                session.close(ex)
+                try:
+                    session = Sessions.find(session_id)
+                    session.close(ex)
+                except SessionError:
+                    pass
             stack_trace = []
             for filename, lno, method, string in reversed(traceback.extract_tb(tb)):
                 stack_trace.append({
@@ -135,19 +139,23 @@ def delete_session(request: web.Request):
 def start_session(request: web.Request):
     session = request.session
     session.endpoint = AndroidEndpoint()
-    yield from session.endpoint.start(session.desired_capabilities)
-    headers = {k: v for k, v in request.headers.items() if k != hdrs.HOST}
-    response = yield from aiohttp.request(
-        request.method,
-        "%s://%s%s" % (request.scheme, session.endpoint.address, request.path),
-        headers=headers,
-        data=(yield from request.read())
-    )
-    if response.status == 200:
-        body = yield from response.json()
-        session.session_id = session.remote_session_id = body.get('sessionId')
-    else:
+    try:
+        yield from session.endpoint.start(session.desired_capabilities)
+        headers = {k: v for k, v in request.headers.items() if k != hdrs.HOST}
+        response = yield from aiohttp.request(
+            request.method,
+            "%s://%s%s" % (request.scheme, session.endpoint.address, request.path),
+            headers=headers,
+            data=(yield from request.read())
+        )
+        if response.status == 200:
+            body = yield from response.json()
+            session.session_id = session.remote_session_id = body.get('sessionId')
+        else:
+            session.close()
+    except:
         session.close()
+        raise
     return response
 
 

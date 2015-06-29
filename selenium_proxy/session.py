@@ -21,6 +21,10 @@ class SessionClosed(Exception):
     pass
 
 
+class SessionError(Exception):
+    pass
+
+
 class Sessions(object):
     sessions = []
 
@@ -29,10 +33,10 @@ class Sessions(object):
         sessions = [session for session in cls.sessions
                     if session.session_id == session_id]
         if not sessions:
-            raise Exception("No such session [%s]" % session_id)
+            raise SessionError("No such session [%s]" % session_id)
 
         if len(sessions) > 1:
-            raise Exception("Found more than one session for [%s]" % session_id)
+            raise SessionError("Found more than one session for [%s]" % session_id)
 
         session = sessions[0]
         session.last_activity = time.time()
@@ -64,15 +68,18 @@ class Session(object):
 
     @asyncio.coroutine
     def timeout_watcher(self):
-        while time.time() - self.last_activity < TIMEOUT:
-            yield from asyncio.sleep(0)
-        self.close(SessionStatus.timeouted)
+        try:
+            while time.time() - self.last_activity < TIMEOUT:
+                yield from asyncio.sleep(1)
+            self.close(SessionStatus.timeouted)
+        except asyncio.CancelledError:
+            pass
 
-    def to_json(self):
-        _json = copy.copy(self.__dict__)
-        del _json['watcher']
-        _json['closed'] = self.closed.done()
-        return _json
+    # def to_json(self):
+    #     _json = copy.copy(self.__dict__)
+    #     del _json['watcher']
+    #     _json['closed'] = self.closed.done()
+    #     return _json
 
     @asyncio.coroutine
     def close_handler(self):
