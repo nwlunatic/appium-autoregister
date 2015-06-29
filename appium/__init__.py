@@ -10,6 +10,7 @@ from threading import Thread
 from utils import get_free_port, run_command
 
 
+LOG_DIR = "logs"
 log = logging.getLogger(__name__)
 
 
@@ -26,6 +27,9 @@ class AppiumNode(object):
         self.device = device
         self.config_file = config_file
         self.log = logging.getLogger(self.device.name)
+        if not os.path.exists(LOG_DIR):
+            os.makedirs(LOG_DIR)
+        self.logfile = os.sep.join([LOG_DIR, device.name])
 
     def to_json(self):
         _json = copy.copy(self.__dict__)
@@ -65,8 +69,20 @@ class AppiumNode(object):
         log.info("starting appium node for %s" % self.device)
         self.process = yield from run_command(self._command, wait_end=False)
         yield from self.process.stdout.read(1)
+        asyncio.async(self._write_stdout())
+        if self.process.returncode:
+            log.warning((yield from self.process.communicate()))
         log.info("process started with pid %s" % self.process.pid)
         return self.process
+
+    @asyncio.coroutine
+    def _write_stdout(self):
+        with open(self.logfile, "wb") as fd:
+            while self.process.returncode is None and\
+                    not self.process.stdout.at_eof():
+                line = yield from self.process.stdout.readline()
+                if line:
+                    fd.write(line)
 
     def stop(self):
         if hasattr(self.process, "poll"):
