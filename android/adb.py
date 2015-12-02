@@ -20,7 +20,7 @@ def adb_command(device, params, asynchronous=False):
     else:
         # if we don't have ANDROID_HOME set, let's just hope adb is in PATH
         adb = 'adb'
-    command = [adb, '-s', device] + params
+    command = [adb, '-s', device, '-H', 'localhost'] + params
     p = yield from asyncio.create_subprocess_exec(
         *command,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
