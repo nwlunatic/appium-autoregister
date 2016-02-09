@@ -3,6 +3,7 @@ import argparse
 import logging
 import tempfile
 import signal
+import time
 from string import Template
 
 
@@ -79,6 +80,8 @@ class Autoregister(object):
                 for node in already_handled_devices.values():
                     node.stop()
                     self.nodes.remove(node)
+
+                time.sleep(0.2)
         except (StopAutoregister, KeyboardInterrupt, SystemExit):
             self.stop()
 
