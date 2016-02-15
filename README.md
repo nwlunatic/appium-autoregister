@@ -7,7 +7,7 @@ Automatically register connected device or emulator to selenium grid with appium
 java -jar selenium-server-standalone-2.45.0.jar -role hub
 ```
 
-+ run autoregistrator
++ run autoregister
 ```bash
 ANDROID_HOME=<path_to_android_sdk> APPIUM_EXECUTABLE=<path_to_appium_executable> python3 autoregister.py
 ```
@@ -15,4 +15,4 @@ ANDROID_HOME=<path_to_android_sdk> APPIUM_EXECUTABLE=<path_to_appium_executable>
 + connect/disconnect your devices and emulators on runtime
 
 + localhost:4444/grid/console
-![Alt text](/docs/grid.png?raw=true "Selenium grid with registred device and x86 emulator")
+![Alt text](/docs/grid.png?raw=true "Selenium grid with registered device and x86 emulator")

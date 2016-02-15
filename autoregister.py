@@ -58,28 +58,34 @@ class Autoregister(object):
     def stop_signal(signum, frame):
         raise StopAutoregister()
 
+    def register(self, device):
+        config_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+        port = get_free_port()
+        config = self.generate_config(device, port)
+        config_file.write(config)
+        config_file.flush()
+        node = AppiumNode(port, device, config_file.name)
+        node.start()
+        self.nodes.append(node)
+
+    def unregister(self, node):
+        node.stop()
+        self.nodes.remove(node)
+
     def run(self, ):
-        log.info("start registring devices...")
+        log.info("start registering devices...")
         try:
             while True:
-                already_handled_devices = {node.device.name: node for node in self.nodes}
+                known_devices = {node.device.name: node for node in self.nodes}
                 for device in android_devices():
-                    if device.name in already_handled_devices.keys():
-                        del already_handled_devices[device.name]
+                    if device.name in known_devices.keys():
+                        del known_devices[device.name]
                         continue
 
-                    config_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
-                    port = get_free_port()
-                    config = self.generate_config(device, port)
-                    config_file.write(config)
-                    config_file.flush()
-                    node = AppiumNode(port, device, config_file.name)
-                    node.start()
-                    self.nodes.append(node)
+                    self.register(device)
 
-                for node in already_handled_devices.values():
-                    node.stop()
-                    self.nodes.remove(node)
+                for node in known_devices.values():
+                    self.unregister(node)
 
                 time.sleep(0.2)
         except (StopAutoregister, KeyboardInterrupt, SystemExit):
