@@ -22,10 +22,13 @@ class AppiumNode(object):
     if appium_executable is None:
         exit('set $APPIUM_EXECUTABLE to path of appium executable')
 
-    def __init__(self, port, device, config_file=None):
+    def __init__(self, port, device, config_file=None, additional_args=None):
         self.port = port
         self.device = device
         self.config_file = config_file
+        if additional_args is None:
+            self.additional_args = []
+        self.additional_args = additional_args
         self.log = logging.getLogger(self.device.name)
         if not os.path.exists(LOG_DIR):
             os.makedirs(LOG_DIR)
@@ -43,7 +46,7 @@ class AppiumNode(object):
             self.appium_executable,
             "--port", str(self.port),
             "--bootstrap-port", str(get_free_port()),
-            "--udid", self.device.name]
+            "--udid", self.device.name] + self.additional_args
         if self.config_file:
             command += ["--nodeconfig", self.config_file]
         return command

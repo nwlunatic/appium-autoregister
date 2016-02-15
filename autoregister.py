@@ -48,38 +48,45 @@ class Autoregister(object):
     }
     """)
 
-    def __init__(self, grid_host, grid_port, appium_host):
+    def __init__(self, grid_host, grid_port, appium_host, additional_args):
         self.grid_host = grid_host
         self.grid_port = grid_port
         self.appium_host = appium_host
+        self.additional_args = additional_args
         signal.signal(signal.SIGTERM, self.stop_signal)
 
     @staticmethod
     def stop_signal(signum, frame):
         raise StopAutoregister()
 
+    def register(self, device):
+        config_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+        port = get_free_port()
+        config = self.generate_config(device, port)
+        config_file.write(config)
+        config_file.flush()
+        node = AppiumNode(port, device, config_file.name, self.additional_args)
+        node.start()
+        self.nodes.append(node)
+
+    def unregister(self, node):
+        node.stop()
+        self.nodes.remove(node)
+
     def run(self, ):
-        log.info("start registring devices...")
+        log.info("start registering devices...")
         try:
             while True:
-                already_handled_devices = {node.device.name: node for node in self.nodes}
+                known_devices = {node.device.name: node for node in self.nodes}
                 for device in android_devices():
-                    if device.name in already_handled_devices.keys():
-                        del already_handled_devices[device.name]
+                    if device.name in known_devices.keys():
+                        del known_devices[device.name]
                         continue
 
-                    config_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
-                    port = get_free_port()
-                    config = self.generate_config(device, port)
-                    config_file.write(config)
-                    config_file.flush()
-                    node = AppiumNode(port, device, config_file.name)
-                    node.start()
-                    self.nodes.append(node)
+                    self.register(device)
 
-                for node in already_handled_devices.values():
-                    node.stop()
-                    self.nodes.remove(node)
+                for node in known_devices.values():
+                    self.unregister(node)
 
                 time.sleep(0.2)
         except (StopAutoregister, KeyboardInterrupt, SystemExit):
@@ -103,11 +110,6 @@ class Autoregister(object):
             node.stop()
 
 
-def main(grid_host, grid_port, appium_host):
-    autoregister = Autoregister(grid_host, grid_port, appium_host)
-    autoregister.run()
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run appium autoregister')
     parser.add_argument('--grid-host', type=str, dest='grid_host', default="localhost",
@@ -116,5 +118,11 @@ if __name__ == "__main__":
                         help='Selenium grid port register to. Default 4444.')
     parser.add_argument('--appium-host', type=str, dest='appium_host', default="localhost",
                         help='This machine host, to be discovered from grid. Default localhost.')
+    parser.add_argument('--additional-args', type=str, dest='additional_args', default='',
+                        help='Additional arguments to appium, when it starts.'
+                             ' Arguments should be separated by ",".'
+                             ' Default no additional arguments passing')
     args = parser.parse_args()
-    main(args.grid_host, args.grid_port, args.appium_host)
+    additional_args = args.additional_args.split(',')
+    autoregister = Autoregister(args.grid_host, args.grid_port, args.appium_host, additional_args)
+    autoregister.run()
