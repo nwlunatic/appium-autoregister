@@ -123,6 +123,8 @@ if __name__ == "__main__":
                              ' Arguments should be separated by ",".'
                              ' Default no additional arguments passing')
     args = parser.parse_args()
-    additional_args = args.additional_args.split(',')
+    additional_args = None
+    if args.additional_args:
+        additional_args = args.additional_args.split(',')
     autoregister = Autoregister(args.grid_host, args.grid_port, args.appium_host, additional_args)
     autoregister.run()
