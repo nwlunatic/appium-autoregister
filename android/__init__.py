@@ -10,22 +10,30 @@ import sys
 ENCODING = sys.getdefaultencoding()
 
 
+android_home = environ.get("ANDROID_HOME", None)
+if android_home is None:
+    exit("set $ANDROID_HOME to path of your android sdk root")
+
+if sys.platform == 'linux' or sys.platform == 'darwin':
+    adb_executable = 'adb'
+elif sys.platform == 'win32':
+    adb_executable = 'adb.exe'
+else:
+    exit("Unsupported platform: %s" % sys.platform)
+
+adb = path.join(android_home, "platform-tools", adb_executable)
+if not path.isfile(adb):
+    exit("adb executable not found in %s" % adb)
+
+
 class Adb(object):
-    android_home = environ.get("ANDROID_HOME", None)
-    if android_home is None:
-        exit("set $ANDROID_HOME to path of your android sdk root")
-
-    adb = path.join(android_home, "platform-tools", "adb")
-    if not path.isfile(adb):
-        exit("adb executable not found in %s" % adb)
-
     def __init__(self, device_name):
         self.device_name = device_name
 
     @classmethod
     def _popen(cls, args):
         args = [arg if isinstance(arg, str) else arg.decode(ENCODING) for arg in args]
-        command = [cls.adb] + args
+        command = [adb] + args
         p = Popen(command, stdout=PIPE, stderr=PIPE)
         p.wait()
         if p.returncode != 0:
